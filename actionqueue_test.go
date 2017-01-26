@@ -1,78 +1,139 @@
 package actionqueue
 
 import (
-  "fmt"
-  "os"
-  "testing"
+	"fmt"
+	"math/rand"
+	"os"
+	"testing"
+	"time"
 )
 
 var filename string = "/tmp/action-queue-test"
 
-func cleanup(queue ActionQueue) {
-  queue.Close()
-  os.Remove(filename)
+func cleanup(queue *ActionQueue) {
+	queue.Close()
+	os.Remove(filename)
+}
+
+func addRandomActions(queue *ActionQueue, delay time.Duration) int {
+	rand.Seed(time.Now().UnixNano())
+
+	total := rand.Intn(100)
+
+	for i := 0; i < total; i++ {
+		queue.AddAction(fmt.Sprintf("Action %d", i))
+		time.Sleep(delay)
+	}
+
+	return total
+}
+
+func testEntry(entry *ActionEntry, tested int, err error, t *testing.T) {
+	if entry.pos != tested {
+		t.Error(fmt.Sprintf("Position %d != %d", entry.pos, tested))
+	}
+
+	if entry.def != fmt.Sprintf("Action %d", tested) {
+		t.Error(fmt.Sprintf("Action %d != %s", tested, entry.def))
+	}
+
+	if err != nil {
+		t.Error(err)
+	}
 }
 
 func TestAddAction(t *testing.T) {
-  queue, err := NewActionQueue(filename)
+	queue, err := NewActionQueue(filename)
 
-  defer cleanup(queue)
+	defer cleanup(queue)
 
-  if err != nil {
-    t.Fatal(err)
-  }
+	if err != nil {
+		t.Fatal(err)
+	}
 
-  pos, err := queue.AddAction("{\"test\":\"value\"}")
+	pos, err := queue.AddAction("{\"test\":\"value\"}")
 
-  if err != nil {
-    t.Fatal(err)
-  }
+	if err != nil {
+		t.Fatal(err)
+	}
 
-  if pos <= 0 {
-    t.Fatal("Position was", pos)
-  }
+	if pos <= 0 {
+		t.Fatal("Position was", pos)
+	}
 }
 
 func TestReadAllHistory(t *testing.T) {
-  queue, _ := NewActionQueue(filename)
-  tested := 0
+	queue, _ := NewActionQueue(filename)
+	tested := 0
 
-  defer cleanup(queue)
+	defer cleanup(queue)
 
-  queue.AddAction("Action 1")
-  queue.AddAction("Action 2")
-  queue.AddAction("Action 3")
+	total := addRandomActions(queue, 0)
 
-  callback := func (entry ActionEntry, err error) {
-    tested++
+	callback := func(entry *ActionEntry, err error) {
+		testEntry(entry, tested, err, t)
+		tested++
+	}
 
-    if entry.pos + 1 != tested {
-      t.Error(fmt.Sprintf("Position %d != %d", entry.pos + 1, tested))
-    }
+	count, err := queue.ReadHistory(callback, 0, -1)
 
-    if entry.def != fmt.Sprintf("Action %d", tested) {
-      t.Error(fmt.Sprintf("Action %d != %s", tested, entry.def))
-    }
+	if err != nil {
+		t.Fatal(err)
+	}
 
-    fmt.Println(entry)
+	if count != total || tested != total {
+		t.Fatal(fmt.Sprintf("Count %d != %d != %d", total, count, tested))
+	}
+}
 
-    /*tim, err := time.Parse(
-      "2017-01-25T18:00:46.52576271+01:00",
-      entry.tim,
-    )
+func TestReadHistoryParts(t *testing.T) {
+	queue, _ := NewActionQueue(filename)
+	tested := 0
 
-    if err != nil {
-      t.Error(err)
-    }*/
-  }
+	defer cleanup(queue)
 
-  count, err := queue.ReadHistory(callback, 0, -1)
+	total := 67
+	begin := 23
+	stop := 60
 
-  if err != nil {
-    t.Fatal(err)
-  }
+	for i := 0; i < total; i++ {
+		queue.AddAction(fmt.Sprintf("Action %d", i))
+	}
 
-  if count != 3 || tested != 3 {
-    t.Fatal(fmt.Sprintf("Count 3 != %d != %d", count, tested))
-  }
+	callback := func(entry *ActionEntry, err error) {
+		testEntry(entry, tested+begin, err, t)
+		tested++
+	}
+
+	count, err := queue.ReadHistory(callback, begin, stop)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if count != tested {
+		t.Fatal(fmt.Sprintf("Count %d > %d != %d", total, count, tested))
+	}
+}
+
+func TestTailHistory(t *testing.T) {
+	queue, _ := NewActionQueue(filename)
+	tested := 0
+
+	defer cleanup(queue)
+
+	done := make(chan bool)
+
+	callback := func(entry *ActionEntry, err error) {
+		testEntry(entry, tested, err, t)
+		tested++
+	}
+
+	go queue.TailHistory(callback, 0, done)
+	total := addRandomActions(queue, 10*time.Millisecond)
+	done <- true
+
+	if tested != total {
+		t.Fatal(fmt.Sprintf("Tested %d != %d", total, tested))
+	}
 }
