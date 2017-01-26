@@ -1,6 +1,8 @@
 Action Queue (go version)
 =========================
 
+[![Build Status](https://semaphoreci.com/api/v1/projects/e86409eb-a13b-4ce7-ad0b-43987c0e3dc5/1151050/shields_badge.svg)](https://semaphoreci.com/houseagency/actionqueue-go)
+
 Implements the Action Queue in go.
 
 ## 1. Create a queue
