@@ -2,9 +2,7 @@ package actionserver
 
 import (
 	"bufio"
-	"fmt"
 	"net"
-	"net/http"
 )
 
 type ActionServer struct {
@@ -30,7 +28,11 @@ func (as ActionServer) Listen() {
 			as.Join(client)
 			break
 		case close := <-as.close:
-			return
+			if close {
+				return
+			}
+
+			break
 		case data := <-as.write:
 			as.Write(data)
 			break
@@ -76,8 +78,12 @@ func (c ActionClient) Listen() {
 	for {
 		select {
 		case close := <-c.close:
-			c.Close()
-			return
+			if close {
+				c.Close()
+				return
+			}
+
+			break
 		case data := <-c.out:
 			c.Write(data)
 			break
