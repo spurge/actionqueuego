@@ -4,41 +4,73 @@ import (
 	"actionqueue.go/actionserver/mock_net"
 	"fmt"
 	"github.com/golang/mock/gomock"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestListenAndJoin(t *testing.T) {
 	mockctrl := gomock.NewController(t)
 	defer mockctrl.Finish()
 
-	server := NewActionServer()
-
-	go server.Listen()
-
-	conn := mock_net.NewMockConn(mockctrl)
+	conn1 := mock_net.NewMockConn(mockctrl)
+	conn2 := mock_net.NewMockConn(mockctrl)
 
 	gomock.InOrder(
-		conn.EXPECT().Write([]byte("Some test 0")),
-		conn.EXPECT().Write([]byte("Some test 1")),
-		conn.EXPECT().Write([]byte("Some test 2")),
-		conn.EXPECT().Write([]byte("Last test after close == false")),
+		conn1.EXPECT().
+			Write([]byte("Some test 0")).
+			Return(len([]byte("Some test 0")), nil),
+		conn1.EXPECT().
+			Write([]byte("Some test 1")).
+			Return(len([]byte("Some test 1")), nil),
+		conn1.EXPECT().
+			Write([]byte("Some test 2")).
+			Return(len([]byte("Some test 2")), nil),
+		conn1.EXPECT().
+			Write([]byte("Last test after close == false")).
+			Return(len([]byte("Last test after close == false")), nil),
+		conn1.EXPECT().Close().Return(nil),
 	)
 
-	server.join <- conn
+	gomock.InOrder(
+		conn2.EXPECT().
+			Write([]byte("Last test after close == false")).
+			Return(len([]byte("Last test after close == false")), nil),
+		conn2.EXPECT().Close().Return(nil),
+	)
 
-	if len(server.clients) != 1 {
-		t.Fatal(fmt.Sprintf("Clients 1 != %d", len(server.clients)))
-	}
+	var wg sync.WaitGroup
+	wg.Add(2)
+	server := NewActionServer()
 
-	for i := 0; i < 3; i++ {
-		server.write <- []byte(fmt.Sprintf("Some test %d", i))
-	}
+	go func() {
+		server.Listen()
 
-	// Shall not close on false
-	server.close <- false
+		// Give the clients some time to close down
+		time.Sleep(10 * time.Millisecond)
 
-	server.write <- []byte("Last test after close == false")
+		wg.Done()
+	}()
 
-	// But close now...
-	server.close <- true
+	go func() {
+		server.Join(conn1)
+
+		for i := 0; i < 3; i++ {
+			server.Write([]byte(fmt.Sprintf("Some test %d", i)))
+		}
+
+		server.Join(conn2)
+
+		// Shall not close on false
+		server.closes <- false
+
+		server.Write([]byte("Last test after close == false"))
+
+		// But close now...
+		server.Close()
+
+		wg.Done()
+	}()
+
+	wg.Wait()
 }

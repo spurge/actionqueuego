@@ -6,99 +6,113 @@ import (
 )
 
 type ActionServer struct {
-	join    chan net.Conn
-	close   chan bool
-	write   chan []byte
+	joins   chan net.Conn
+	closes  chan bool
+	writes  chan []byte
 	clients []*ActionClient
 }
 
 func NewActionServer() *ActionServer {
-	return &ActionServer{
+	server := &ActionServer{
 		make(chan net.Conn),
 		make(chan bool),
 		make(chan []byte),
 		make([]*ActionClient, 0),
 	}
+
+	return server
 }
 
 func (as ActionServer) Listen() {
+loop:
 	for {
 		select {
-		case client := <-as.join:
-			as.Join(client)
-			break
-		case close := <-as.close:
+		case close := <-as.closes:
 			if close {
-				return
+				as.close()
+				break loop
 			}
-
-			break
-		case data := <-as.write:
-			as.Write(data)
-			break
+		case conn := <-as.joins:
+			client := NewActionClient(conn)
+			as.clients = append(as.clients, client)
+		case data := <-as.writes:
+			as.write(data)
 		}
 	}
 }
 
 func (as ActionServer) Join(conn net.Conn) {
-	client := NewActionClient(conn)
-	as.clients = append(as.clients, client)
-	go client.Listen()
+	as.joins <- conn
 }
 
 func (as ActionServer) Close() {
+	as.closes <- true
+}
+
+func (as ActionServer) close() {
 	for _, client := range as.clients {
-		client.close <- true
+		client.Close()
 	}
 }
 
 func (as ActionServer) Write(data []byte) {
+	as.writes <- data
+}
+
+func (as ActionServer) write(data []byte) {
 	for _, client := range as.clients {
-		client.out <- data
+		client.Write(data)
 	}
 }
 
 type ActionClient struct {
-	out    chan []byte
-	close  chan bool
-	conn   *net.Conn
+	writes chan []byte
+	closes chan bool
+	conn   net.Conn
 	writer *bufio.Writer
 }
 
 func NewActionClient(conn net.Conn) *ActionClient {
-	return &ActionClient{
+	client := &ActionClient{
 		make(chan []byte),
 		make(chan bool),
-		&conn,
+		conn,
 		bufio.NewWriter(conn),
 	}
+
+	go client.listen()
+
+	return client
 }
 
-func (c ActionClient) Listen() {
+func (c ActionClient) listen() {
+loop:
 	for {
 		select {
-		case close := <-c.close:
+		case close := <-c.closes:
 			if close {
-				c.Close()
-				return
+				c.close()
+				break loop
 			}
-
-			break
-		case data := <-c.out:
-			c.Write(data)
-			break
+		case data := <-c.writes:
+			c.write(data)
 		}
 	}
 }
 
 func (c ActionClient) Write(data []byte) {
-	for _, b := range data {
-		c.writer.WriteByte(b)
-	}
+	c.writes <- data
+}
 
+func (c ActionClient) write(data []byte) {
+	c.writer.Write(data)
 	defer c.writer.Flush()
 }
 
 func (c ActionClient) Close() {
-	//c.conn.
+	c.closes <- true
+}
+
+func (c ActionClient) close() {
+	c.conn.Close()
 }
