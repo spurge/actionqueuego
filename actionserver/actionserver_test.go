@@ -2,6 +2,7 @@ package actionserver
 
 import (
 	"actionqueue.go/actionserver/mock_net"
+	"errors"
 	"fmt"
 	"github.com/golang/mock/gomock"
 	"sync"
@@ -9,10 +10,11 @@ import (
 	"time"
 )
 
-func TestListenAndJoin(t *testing.T) {
+func TestJoinWriteClose(t *testing.T) {
 	mockctrl := gomock.NewController(t)
 	defer mockctrl.Finish()
 
+	listener := mock_net.NewMockListener(mockctrl)
 	conn1 := mock_net.NewMockConn(mockctrl)
 	conn2 := mock_net.NewMockConn(mockctrl)
 
@@ -39,9 +41,17 @@ func TestListenAndJoin(t *testing.T) {
 		conn2.EXPECT().Close().Return(nil),
 	)
 
+	listener.EXPECT().
+		Accept().
+		AnyTimes().
+		Return(nil, errors.New("error"))
+	listener.EXPECT().
+		Close().
+		Return(nil)
+
 	var wg sync.WaitGroup
 	wg.Add(2)
-	server := NewActionServer()
+	server := NewActionServer(listener)
 
 	go func() {
 		server.Listen()
@@ -69,6 +79,55 @@ func TestListenAndJoin(t *testing.T) {
 		// But close now...
 		server.Close()
 
+		wg.Done()
+	}()
+
+	wg.Wait()
+}
+
+func TestListeners(t *testing.T) {
+	mockctrl := gomock.NewController(t)
+	defer mockctrl.Finish()
+
+	conn := mock_net.NewMockConn(mockctrl)
+	listener := mock_net.NewMockListener(mockctrl)
+	testBytes := []byte("Testing...")
+
+	gomock.InOrder(
+		listener.EXPECT().
+			Accept().
+			Return(conn, nil),
+		listener.EXPECT().
+			Accept().
+			Do(func() {
+				time.Sleep(time.Second)
+			}).
+			Return(conn, nil),
+		conn.EXPECT().
+			Write(testBytes).
+			Return(len(testBytes), nil),
+		conn.EXPECT().Close().Return(nil),
+		listener.EXPECT().
+			Close().
+			Return(nil),
+	)
+
+	server := NewActionServer(listener)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		server.Listen()
+		wg.Done()
+	}()
+
+	go func() {
+		// Give the client some time to join
+		time.Sleep(10 * time.Millisecond)
+
+		server.Write(testBytes)
+		server.Close()
 		wg.Done()
 	}()
 

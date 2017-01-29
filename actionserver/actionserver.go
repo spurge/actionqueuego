@@ -3,27 +3,33 @@ package actionserver
 import (
 	"bufio"
 	"net"
+	//"net/http"
+	"log"
 )
 
 type ActionServer struct {
-	joins   chan net.Conn
-	closes  chan bool
-	writes  chan []byte
-	clients []*ActionClient
+	joins       chan net.Conn
+	closes      chan bool
+	writes      chan []byte
+	clients     []*ActionClient
+	netListener net.Listener
 }
 
-func NewActionServer() *ActionServer {
+func NewActionServer(netListener net.Listener) *ActionServer {
 	server := &ActionServer{
 		make(chan net.Conn),
 		make(chan bool),
 		make(chan []byte),
 		make([]*ActionClient, 0),
+		netListener,
 	}
 
 	return server
 }
 
 func (as ActionServer) Listen() {
+	go as.acceptingClients()
+
 loop:
 	for {
 		select {
@@ -35,8 +41,19 @@ loop:
 		case conn := <-as.joins:
 			client := NewActionClient(conn)
 			as.clients = append(as.clients, client)
+			log.Println("Joined clients: ", len(as.clients))
 		case data := <-as.writes:
 			as.write(data)
+		}
+	}
+}
+
+func (as ActionServer) acceptingClients() {
+	for {
+		conn, err := as.netListener.Accept()
+
+		if err == nil {
+			as.Join(conn)
 		}
 	}
 }
@@ -50,9 +67,12 @@ func (as ActionServer) Close() {
 }
 
 func (as ActionServer) close() {
+	log.Println("Closing clients: ", len(as.clients))
 	for _, client := range as.clients {
 		client.Close()
 	}
+
+	as.netListener.Close()
 }
 
 func (as ActionServer) Write(data []byte) {
@@ -60,6 +80,7 @@ func (as ActionServer) Write(data []byte) {
 }
 
 func (as ActionServer) write(data []byte) {
+	log.Println("Writing clients: ", len(as.clients))
 	for _, client := range as.clients {
 		client.Write(data)
 	}
