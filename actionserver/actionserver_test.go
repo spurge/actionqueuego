@@ -1,7 +1,7 @@
 package actionserver
 
 import (
-	"actionqueue.go/actionserver/mock_net"
+	"actionqueuego/actionserver/mock_net"
 	"errors"
 	"fmt"
 	"github.com/golang/mock/gomock"
