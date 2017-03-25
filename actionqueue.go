@@ -40,7 +40,7 @@ func NewActionQueue(filename string) (*ActionQueue, error) {
 	}, err
 }
 
-func (q ActionQueue) AddAction(def string) (int, error) {
+func (q *ActionQueue) AddAction(def string) (int, error) {
 	data, err := json.Marshal(map[string]interface{}{
 		"def": def,
 		"tim": time.Now().String(),
@@ -65,7 +65,7 @@ func (q ActionQueue) AddAction(def string) (int, error) {
 	return q.pos, nil
 }
 
-func (q ActionQueue) ReadHistory(
+func (q *ActionQueue) ReadHistory(
 	cb HistoryCallback,
 	from int,
 	to int,
@@ -78,7 +78,7 @@ func (q ActionQueue) ReadHistory(
 	return readFile(q.filename, callback)
 }
 
-func (q ActionQueue) TailHistory(
+func (q *ActionQueue) TailHistory(
 	cb HistoryCallback,
 	from int,
 	done chan bool,
@@ -108,7 +108,7 @@ func (q ActionQueue) TailHistory(
 	return readFile(q.filename, callback)
 }
 
-func (q ActionQueue) Close() {
+func (q *ActionQueue) Close() {
 	q.file.Close()
 }
 

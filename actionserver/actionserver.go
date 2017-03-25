@@ -27,7 +27,7 @@ func NewActionServer(netListener net.Listener) *ActionServer {
 	return server
 }
 
-func (as ActionServer) Listen() {
+func (as *ActionServer) Listen() {
 	go as.acceptingClients()
 
 loop:
@@ -48,7 +48,7 @@ loop:
 	}
 }
 
-func (as ActionServer) acceptingClients() {
+func (as *ActionServer) acceptingClients() {
 	for {
 		conn, err := as.netListener.Accept()
 
@@ -58,15 +58,15 @@ func (as ActionServer) acceptingClients() {
 	}
 }
 
-func (as ActionServer) Join(conn net.Conn) {
+func (as *ActionServer) Join(conn net.Conn) {
 	as.joins <- conn
 }
 
-func (as ActionServer) Close() {
+func (as *ActionServer) Close() {
 	as.closes <- true
 }
 
-func (as ActionServer) close() {
+func (as *ActionServer) close() {
 	log.Println("Closing clients: ", len(as.clients))
 	for _, client := range as.clients {
 		client.Close()
@@ -75,11 +75,11 @@ func (as ActionServer) close() {
 	as.netListener.Close()
 }
 
-func (as ActionServer) Write(data []byte) {
+func (as *ActionServer) Write(data []byte) {
 	as.writes <- data
 }
 
-func (as ActionServer) write(data []byte) {
+func (as *ActionServer) write(data []byte) {
 	log.Println("Writing clients: ", len(as.clients))
 	for _, client := range as.clients {
 		client.Write(data)
