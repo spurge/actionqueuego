@@ -1,10 +1,10 @@
 package actionserver
 
 import (
-	"actionqueuego/actionserver/mock_net"
 	"errors"
 	"fmt"
 	"github.com/golang/mock/gomock"
+	"github.com/spurge/actionqueuego/actionserver/mock_net"
 	"sync"
 	"testing"
 	"time"
